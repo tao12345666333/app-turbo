@@ -31,12 +31,39 @@ def convert_to_record(func):
         if result is not None:
             if isinstance(result, dict):
                 return _record(result)
-            
+
             return (_record(i) for i in result)
 
         return result
 
     return wrapper
+
+
+def multi_db_support(obj):
+    """multi db connection support"""
+
+    model_log.error('obj')
+
+    def wrapper_function(func):
+        model_log.error('fun')
+
+        # model_log.info(func.__name__)
+
+        # def wrapper(*args, **kwargs):
+        #     model_log.error('wrapper')
+
+        #     model_log.info('****---**')
+
+        #     if hasattr(obj, '__bak_collect'):
+        #         getattr(obj, func.__name__)(*args, **kwargs)
+        #     else:
+        #         model_log.error('do not hava bak_collect')
+
+        #     return func(*args, **kwargs)
+
+        # return wrapper
+
+    return wrapper_function
 
 
 class MixinModel(object):
@@ -84,7 +111,7 @@ class MixinModel(object):
                 return callback(_es.to_str(values))
 
             return [callback(_es.to_str(i)) for i in values]
-            
+
         return _es.to_str(values)
 
     @staticmethod
@@ -140,7 +167,7 @@ class MixinModel(object):
     @staticmethod
     def default_record():
         """
-        generate one default record which return '' when key is empty 
+        generate one default record which return '' when key is empty
         """
         return defaultdict(lambda: '')
 
@@ -170,16 +197,26 @@ class BaseBaseModel(MixinModel):
         '$push',
         '$pull'])
 
-    def __init__(self, db_name='test', _MONGO_DB_MAPPING=None):
+    def __init__(self, db_name='test', _MONGO_DB_MAPPING=None, _BAK_MONGO_DB_MAPPING=None):
         if _MONGO_DB_MAPPING is None:
             raise Exception("db mapping is invalid")
 
         # databases
         self.__db = _MONGO_DB_MAPPING['db']
+
+        model_log.info('*************')
+        model_log.error(self.__db)
+        model_log.info('*************')
         # databases file
         self.__db_file = _MONGO_DB_MAPPING['db_file']
 
-        #databse name
+        # databse name
+
+        model_log.info('-------------------')
+        model_log.error(type(db_name))
+        model_log.info('-------------------')
+        model_log.warn(type(self.__db))
+
         if db_name not in self.__db or self.__db.get(db_name, None) is None:
             raise Exception("%s is invalid databse" % db_name)
 
@@ -201,12 +238,16 @@ class BaseBaseModel(MixinModel):
         if self.__gridfs is None:
             model_log.warning("%s is invalid gridfs" % self.__gridfs)
 
+        if _BAK_MONGO_DB_MAPPING:
+            self.__bak_db = _BAK_MONGO_DB_MAPPING['db']
+            self.__bak_collect = getattr(self.__bak_db.get(db_name, object), self.name, None)
+
     def __setitem__(self, k, v):
         setattr(self, k, v)
 
     def __getitem__(self, k):
         return getattr(self, k)
-    
+
     def __getattr__(self, k):
         attr = getattr(self.__collect, k)
         if isinstance(attr, collection.Collection):
@@ -214,8 +255,16 @@ class BaseBaseModel(MixinModel):
 
         return attr
 
+    def __getattribute__(self, k):
+        attr = super(BaseBaseModel, self).__getattribute__(k)
+        # model_log.info('getattribute')
+        # model_log.error(attr)
+        multi_db_support(self)(attr)
+        # model_log.error(attr)
+        return attr
+
     def sub_collection(self, name):
-        return self.__collect[name] 
+        return self.__collect[name]
 
     def __str__(self):
         if isinstance(self.field, dict):
@@ -292,7 +341,7 @@ class BaseBaseModel(MixinModel):
                 raise ValueError("invalid document update operator")
 
         if not document:
-            raise ValueError("empty document update not allowed")           
+            raise ValueError("empty document update not allowed")
 
         return self.__collect.update(spec, document, multi=multi, **kwargs)
 
